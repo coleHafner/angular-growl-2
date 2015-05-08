@@ -1,5 +1,5 @@
 /**
- * angular-growl-v2 - v0.7.3 - 2015-02-22
+ * angular-growl-v2 - v0.7.3 - 2015-01-05
  * http://janstevens.github.io/angular-growl-2
  * Copyright (c) 2015 Marco Rinck,Jan Stevens; Licensed MIT
  */
@@ -32,16 +32,19 @@ angular.module('angular-growl').directive('growl', [function () {
             }
           });
           $scope.stopTimeoutClose = function (message) {
-            if (!message.clickToClose) {
-              angular.forEach(message.promises, function (promise) {
-                $timeout.cancel(promise);
-              });
-              if (message.close) {
-                growlMessages.deleteMessage(message);
-              } else {
-                message.close = true;
-              }
-            }
+            if (message.clickToClose === true) {
+				message.wasClicked = true;
+				growlMessages.deleteMessage(message);
+				return;
+			}
+			angular.forEach(message.promises, function (promise) {
+			  $timeout.cancel(promise);
+			});
+			if (message.close) {
+			  growlMessages.deleteMessage(message);
+			} else {
+			  message.close = true;
+			}
           };
           $scope.alertClasses = function (message) {
             return {
@@ -57,12 +60,14 @@ angular.module('angular-growl').directive('growl', [function () {
           $scope.showCountDown = function (message) {
             return !message.disableCountDown && message.ttl > 0;
           };
+		  
           $scope.wrapperClasses = function () {
             var classes = {};
             classes['growl-fixed'] = !$scope.inlineMessage;
             classes[growl.position()] = true;
             return classes;
           };
+		  
           $scope.computeTitle = function (message) {
             var ret = {
                 'success': 'Success',
@@ -81,13 +86,13 @@ angular.module('angular-growl').run([
   function ($templateCache) {
     'use strict';
     if ($templateCache.get('templates/growl/growl.html') === undefined) {
-      $templateCache.put('templates/growl/growl.html', '<div class="growl-container" ng-class="wrapperClasses()">' + '<div class="growl-item alert" ng-repeat="message in growlMessages.directives[referenceId].messages" ng-class="alertClasses(message)" ng-click="stopTimeoutClose(message)">' + '<button type="button" class="close" data-dismiss="alert" aria-hidden="true" ng-click="growlMessages.deleteMessage(message)" ng-show="!message.disableCloseButton">&times;</button>' + '<button type="button" class="close" aria-hidden="true" ng-show="showCountDown(message)">{{message.countdown}}</button>' + '<h4 class="growl-title" ng-show="message.title" ng-bind="message.title"></h4>' + '<div class="growl-message" ng-bind-html="message.text"></div>' + '</div>' + '</div>');
+      $templateCache.put('templates/growl/growl.html', '<div class="growl-container" ng-class="wrapperClasses()">' + '<div class="growl-item alert" ng-repeat="message in growlMessages.directives[referenceId].messages" ng-class="alertClasses(message)" ng-click="stopTimeoutClose(message)">' + '<button type="button" class="close" data-dismiss="alert" aria-hidden="true" ng-click="growlMessages.deleteMessage(message)" ng-show="!message.disableCloseButton && !message.clickToClose">&times;</button>' + '<button type="button" class="close" aria-hidden="true" ng-show="showCountDown(message)">{{message.countdown}}</button>' + '<h4 class="growl-title" ng-show="message.title" ng-bind="message.title"></h4>' + '<div class="growl-message" ng-bind-html="message.text"></div>' + '</div>' + '</div>');
     }
   }
 ]);
 angular.module('angular-growl').provider('growl', function () {
   'use strict';
-  var _ttl = {
+  var _ttl = {	
       success: null,
       error: null,
       warning: null,
@@ -186,7 +191,6 @@ angular.module('angular-growl').provider('growl', function () {
       function broadcastMessage(message) {
         if (translate && message.translateMessage) {
           message.text = translate(message.text, message.variables);
-          message.title = translate(message.title);
         } else {
           var polation = $interpolate(message.text);
           message.text = polation(message.variables);
@@ -211,6 +215,8 @@ angular.module('angular-growl').provider('growl', function () {
           position: _config.position || _position,
           referenceId: _config.referenceId || _referenceId,
           translateMessage: _config.translateMessage === undefined ? _translateMessages : _config.translateMessage,
+		  clickToClose: _config.clickToClose === undefined ? false : _config.clickToClose,
+		  wasClicked: false,
           destroy: function () {
             growlMessages.deleteMessage(message);
           },
@@ -321,8 +327,8 @@ angular.module('angular-growl').service('growlMessages', [
       return messages;
     };
     this.destroyAllMessages = function (referenceId) {
-      var messages = this.getAllMessages(referenceId);
-      for (var i = messages.length - 1; i >= 0; i--) {
+      var messages = this.getAllMessages(referenceId), i = messages.length;
+      for (i - 1; i >= 0; i--) {
         messages[i].destroy();
       }
       if (this.directives[referenceId]) {
@@ -385,13 +391,14 @@ angular.module('angular-growl').service('growlMessages', [
       return message;
     };
     this.deleteMessage = function (message) {
-      var messages = this.directives[message.referenceId].messages, index = messages.indexOf(message);
+	  var messageCopy = angular.copy(message),
+		  messages = this.directives[message.referenceId].messages, index = messages.indexOf(message);
       if (index > -1) {
         messages[index].close = true;
         messages.splice(index, 1);
       }
       if (typeof message.onclose === 'function') {
-        message.onclose();
+        message.onclose(messageCopy);
       }
     };
   }
